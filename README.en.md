@@ -19,7 +19,7 @@ The framework only ships *archive*. Archiving keeps the files. This plugin cover
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add github:chichi233/dsh-session-delete
+pnpm add github:chichi233/dsh-delete-session
 ```
 
 Then add `"dsh-session-delete"` to `dsh.profile.bundles` in `~/.dsh/profiles/desktop/package.json`.

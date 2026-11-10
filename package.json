@@ -7,12 +7,12 @@
   "author": "YG",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chichi233/dsh-session-delete.git"
+    "url": "https://github.com/chichi233/dsh-delete-session.git"
   },
   "bugs": {
-    "url": "https://github.com/chichi233/dsh-session-delete/issues"
+    "url": "https://github.com/chichi233/dsh-delete-session/issues"
   },
-  "homepage": "https://github.com/chichi233/dsh-session-delete#readme",
+  "homepage": "https://github.com/chichi233/dsh-delete-session#readme",
   "keywords": [
     "dsh",
     "dsh-plugin",

@@ -19,7 +19,7 @@
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add github:chichi233/dsh-session-delete
+pnpm add github:chichi233/dsh-delete-session
 ```
 
 然后在 `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 里加一行：
