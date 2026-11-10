@@ -1,6 +1,6 @@
-# dsh-delete-session bundle layer: mount the delete-session plugin.
-# Applied automatically when "dsh-delete-session" is listed in the profile's
+# dsh-session-delete bundle layer: mount the delete-session plugin.
+# Applied automatically when "dsh-session-delete" is listed in the profile's
 # dsh.profile.bundles (same mechanism as dsh-sonic / dsh-recent-sessions).
 - insert:
-    - id: dsh-delete-session
-      name: 'dsh-delete-session'
+    - id: dsh-session-delete
+      name: 'dsh-session-delete'

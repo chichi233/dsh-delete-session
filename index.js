@@ -1,9 +1,9 @@
 /**
- * dsh-delete-session — 宿主端（Host half）。
+ * dsh-session-delete — 宿主端（Host half）。
  *
  * 职责：
- *   1. 提供删除接口 POST /dsh-delete-session/api/delete；
- *   2. 提供设置读写 GET/POST /dsh-delete-session/api/settings（「删除前再次确认」开关）；
+ *   1. 提供删除接口 POST /dsh-session-delete/api/delete；
+ *   2. 提供设置读写 GET/POST /dsh-session-delete/api/settings（「删除前再次确认」开关）；
  *   3. 真正把会话从磁盘上抹掉。
  *
  * 为什么是纯文件系统实现（不调 sessionPersistence.list/locate）：
@@ -21,7 +21,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { createZstdDecompress } from 'node:zlib'
 
-export const name = 'dsh-delete-session'
+export const name = 'dsh-session-delete'
 
 /** 不声明硬依赖：服务缺失时路由照常注册，删除靠文件系统自己完成。 */
 export const inject = []
@@ -397,7 +397,7 @@ export function apply(ctx) {
       scope.webServer.register({
         name: `${name}-${path.replace(/[^a-z0-9]+/gi, '-')}`,
         kind: 'exact',
-        path: `/dsh-delete-session/api/${path}`,
+        path: `/dsh-session-delete/api/${path}`,
         handler,
       })
 

@@ -18,7 +18,7 @@ sandbox.globalThis = sandbox
 vm.createContext(sandbox)
 vm.runInContext(src, sandbox, { filename: 'client.js' })
 if (!captured) throw new Error('no load() call')
-if (captured.id !== 'dsh-delete-session') throw new Error('bad id ' + captured.id)
+if (captured.id !== 'dsh-session-delete') throw new Error('bad id ' + captured.id)
 const mod = captured.factory((name) => {
   if (name === 'react') {
     const r = {
@@ -34,7 +34,7 @@ const mod = captured.factory((name) => {
   if (name === 'react-dom') return { createPortal: (n) => n }
   throw new Error('unexpected require ' + name)
 })
-if (mod.name !== 'dsh-delete-session') throw new Error('bad exports.name')
+if (mod.name !== 'dsh-session-delete') throw new Error('bad exports.name')
 if (typeof mod.apply !== 'function') throw new Error('apply missing')
 
 // 1) slots 立刻可用 -> 立刻注册

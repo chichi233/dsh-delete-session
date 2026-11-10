@@ -42,9 +42,9 @@ const fakeCtx = {
 const { apply } = await import('../index.js')
 apply(fakeCtx)
 check('注册了三条路由', [...routes.keys()].sort(), [
-  '/dsh-delete-session/api/delete',
-  '/dsh-delete-session/api/settings',
-  '/dsh-delete-session/api/state',
+  '/dsh-session-delete/api/delete',
+  '/dsh-session-delete/api/settings',
+  '/dsh-session-delete/api/state',
 ])
 
 function request(method, url, body) {
@@ -78,32 +78,32 @@ async function call(path, method, url, body) {
   return { ...res.holder, json: JSON.parse(res.holder.body) }
 }
 
-const settingsGet = await call('/dsh-delete-session/api/settings', 'GET', '/dsh-delete-session/api/settings')
+const settingsGet = await call('/dsh-session-delete/api/settings', 'GET', '/dsh-session-delete/api/settings')
 check('GET settings 200', settingsGet.status, 200)
 check('默认开启再次确认', settingsGet.json.settings.confirmBeforeDelete, true)
 
-const settingsPost = await call('/dsh-delete-session/api/settings', 'POST', '/dsh-delete-session/api/settings', { confirmBeforeDelete: false })
+const settingsPost = await call('/dsh-session-delete/api/settings', 'POST', '/dsh-session-delete/api/settings', { confirmBeforeDelete: false })
 check('POST settings 关闭', settingsPost.json.settings.confirmBeforeDelete, false)
-const settingsAgain = await call('/dsh-delete-session/api/settings', 'GET', '/dsh-delete-session/api/settings')
+const settingsAgain = await call('/dsh-session-delete/api/settings', 'GET', '/dsh-session-delete/api/settings')
 check('设置已持久化', settingsAgain.json.settings.confirmBeforeDelete, false)
 
-const state = await call('/dsh-delete-session/api/state', 'GET', '/dsh-delete-session/api/state?id=session-deadbeef')
+const state = await call('/dsh-session-delete/api/state', 'GET', '/dsh-session-delete/api/state?id=session-deadbeef')
 check('state 200', state.status, 200)
 check('state 报告根目录', state.json.root, root)
 check('state 探针命中', state.json.probe.exists, true)
 
-const bad = await call('/dsh-delete-session/api/delete', 'POST', '/dsh-delete-session/api/delete', { sessionId: '../etc/passwd' })
+const bad = await call('/dsh-session-delete/api/delete', 'POST', '/dsh-session-delete/api/delete', { sessionId: '../etc/passwd' })
 check('非法 id 返回 400', bad.status, 400)
 
-const wrongMethod = await call('/dsh-delete-session/api/delete', 'GET', '/dsh-delete-session/api/delete')
+const wrongMethod = await call('/dsh-session-delete/api/delete', 'GET', '/dsh-session-delete/api/delete')
 check('GET delete 返回 405', wrongMethod.status, 405)
 
-const removed = await call('/dsh-delete-session/api/delete', 'POST', '/dsh-delete-session/api/delete', { sessionId: 'session-deadbeef' })
+const removed = await call('/dsh-session-delete/api/delete', 'POST', '/dsh-session-delete/api/delete', { sessionId: 'session-deadbeef' })
 check('删除 200', removed.status, 200)
 check('删除报告 deleted', removed.json.deleted, ['session-deadbeef'])
 check('目录已消失', await readdir(join(root, project)).catch(() => []), [])
 
-const after = await call('/dsh-delete-session/api/state', 'GET', '/dsh-delete-session/api/state?id=session-deadbeef')
+const after = await call('/dsh-session-delete/api/state', 'GET', '/dsh-session-delete/api/state?id=session-deadbeef')
 check('删除后探针为 false', after.json.probe.exists, false)
 
 await rm(root, { recursive: true, force: true })

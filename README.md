@@ -1,4 +1,4 @@
-# dsh-delete-session
+# dsh-session-delete
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai) 的会话侧栏加一个**真删除**：`⋯` 菜单里多一项「删除会话」，点下去就把会话从磁盘上清掉，行立即消失。
 
@@ -19,29 +19,29 @@
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add github:chichi233/dsh-delete-session
+pnpm add github:chichi233/dsh-session-delete
 ```
 
 然后在 `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 里加一行：
 
 ```json
-"dsh-delete-session"
+"dsh-session-delete"
 ```
 
 ### B. 从本地目录装（开发）
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add link:/absolute/path/to/dsh-delete-session
+pnpm add link:/absolute/path/to/dsh-session-delete
 ```
 
-同样把 `"dsh-delete-session"` 加进 `dsh.profile.bundles`。
+同样把 `"dsh-session-delete"` 加进 `dsh.profile.bundles`。
 
 ### C. 手动放置
 
-1. 把整个目录复制到 `~/.dsh/profiles/desktop/node_modules/dsh-delete-session/`。
-2. `dependencies` 里写 `"dsh-delete-session": "file:../../plugins/dsh-delete-session"`。
-3. `dsh.profile.bundles` 里加 `"dsh-delete-session"`。
+1. 把整个目录复制到 `~/.dsh/profiles/desktop/node_modules/dsh-session-delete/`。
+2. `dependencies` 里写 `"dsh-session-delete": "file:../../plugins/dsh-session-delete"`。
+3. `dsh.profile.bundles` 里加 `"dsh-session-delete"`。
 
 装完**必须重启 DSH 桌面端**：宿主端是 ESM 模块，进程内的模块缓存不会因为改文件或插件控制台 toggle 而失效，只有重启才会加载新代码。重启后设置页「插件」列表里就能看到它。
 
@@ -49,11 +49,11 @@ pnpm add link:/absolute/path/to/dsh-delete-session
 > `dsh.profile.bundles` 后由 bundle 层自动应用，这是唯一正确的启用方式。
 > 手写 insert 会被插件控制台（`@noob-stupid/dsh-plugin-console`）的补丁自愈判成「模块缺失」：
 > 它只用框架安装树（`.pnpm` 里那层 `node_modules`）当解析基准，第三方包（尤其 `link:` 装的）必然解析不到，
-> 于是自动追加 `- id: dsh-delete-session` / `disabled: true` 把插件压下去；而且它一旦写过就不再复查，
+> 于是自动追加 `- id: dsh-session-delete` / `disabled: true` 把插件压下去；而且它一旦写过就不再复查，
 > 这条禁用记录会一直留着 —— 表现就是「装上去了、列表里能看到、但界面完全没反应」。
-> 真的遇到了：删掉 `cordis.patch.yml` 末尾那段 `- id: dsh-delete-session / disabled: true`，重启。
+> 真的遇到了：删掉 `cordis.patch.yml` 末尾那段 `- id: dsh-session-delete / disabled: true`，重启。
 
-卸载：从 `dsh.profile.bundles` 删掉这一行，再从 `dependencies` 删掉，重启即可。`~/.dsh/plugin-data/dsh-delete-session/` 可以一起删掉。
+卸载：从 `dsh.profile.bundles` 删掉这一行，再从 `dependencies` 删掉，重启即可。`~/.dsh/plugin-data/dsh-session-delete/` 可以一起删掉。
 
 ## 与 「归档会话」插件共存
 
@@ -86,7 +86,7 @@ pnpm add link:/absolute/path/to/dsh-delete-session
 
 ## 设置存放位置
 
-`~/.dsh/plugin-data/dsh-delete-session/settings.json`
+`~/.dsh/plugin-data/dsh-session-delete/settings.json`
 
 ```json
 { "confirmBeforeDelete": true }
@@ -98,10 +98,10 @@ pnpm add link:/absolute/path/to/dsh-delete-session
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
-| GET | `/dsh-delete-session/api/settings` | 读设置 |
-| POST | `/dsh-delete-session/api/settings` | 写设置，body `{ "confirmBeforeDelete": false }` |
-| GET | `/dsh-delete-session/api/state` | 体检：返回会话根目录与目录总数；带 `?id=<sessionId>` 时返回该会话是否存在 |
-| POST | `/dsh-delete-session/api/delete` | 删除会话，body `{ "sessionId": "..." }` |
+| GET | `/dsh-session-delete/api/settings` | 读设置 |
+| POST | `/dsh-session-delete/api/settings` | 写设置，body `{ "confirmBeforeDelete": false }` |
+| GET | `/dsh-session-delete/api/state` | 体检：返回会话根目录与目录总数；带 `?id=<sessionId>` 时返回该会话是否存在 |
+| POST | `/dsh-session-delete/api/delete` | 删除会话，body `{ "sessionId": "..." }` |
 
 ## 兼容性
 
@@ -115,7 +115,7 @@ pnpm add link:/absolute/path/to/dsh-delete-session
 
 ## 排错
 
-**启动卡在 `web boot: 1 entry did not activate` / `dsh-delete-session: import failed`。**
+**启动卡在 `web boot: 1 entry did not activate` / `dsh-session-delete: import failed`。**
 原因是浏览器端 bundle 的 factory 抛了异常。最常见的一种：`factory(require)` 只传 `require`，
 `module` 和 `exports` 都不是全局变量，必须自己在 factory 里造：
 
@@ -131,7 +131,7 @@ factory(require) {
 写自己的插件时照这个骨架抄。0.1.1 已修掉这个 bug。
 
 **侧栏菜单里没有「删除会话」。**
-先看 `GET /dsh-delete-session/api/state`：
+先看 `GET /dsh-session-delete/api/state`：
 
 - `graph.self` = `false` → 前端模块图里没有本插件，检查 profile 依赖和 `dsh.profile.bundles` 是否都写了（**不要**靠补丁层 insert）。
 - `graph.self` = `true` 但 `client.lastPingAt` 为 `null` → 前端模块加载了但 `apply()` 没跑到打点，看 `client.stage`。
@@ -145,7 +145,7 @@ factory(require) {
 ## 开发
 
 ```
-dsh-delete-session/
+dsh-session-delete/
 ├── index.js            # 宿主：路由 + 删除逻辑
 ├── client.js           # 浏览器：菜单项 / 确认框 / 设置开关
 ├── cordis.patch.yml    # bundle 层：insert 插件条目

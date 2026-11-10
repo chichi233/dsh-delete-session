@@ -1,18 +1,18 @@
 {
-  "name": "dsh-delete-session",
-  "version": "0.1.5",
+  "name": "dsh-session-delete",
+  "version": "0.2.0",
   "description": "Right-click-to-delete for DeepSeek Harness sessions: a 删除会话 menu item in every session row menu, an optional confirmation dialog, and a Settings switch to skip that dialog. Removes the transcript directory, projection cache rows, spill files and child subagent sessions, then notifies every client so the row disappears immediately.",
   "type": "module",
   "license": "MIT",
   "author": "YG",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chichi233/dsh-delete-session.git"
+    "url": "https://github.com/chichi233/dsh-session-delete.git"
   },
   "bugs": {
-    "url": "https://github.com/chichi233/dsh-delete-session/issues"
+    "url": "https://github.com/chichi233/dsh-session-delete/issues"
   },
-  "homepage": "https://github.com/chichi233/dsh-delete-session#readme",
+  "homepage": "https://github.com/chichi233/dsh-session-delete#readme",
   "keywords": [
     "dsh",
     "dsh-plugin",

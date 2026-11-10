@@ -1,5 +1,5 @@
 /**
- * dsh-delete-session — 浏览器端（Client half）。
+ * dsh-session-delete — 浏览器端（Client half）。
  *
  * 加了三样东西：
  *   1. 侧栏每个会话的「⋯」菜单里多一项「删除会话」（插槽
@@ -7,18 +7,18 @@
  *   2. 一个确认卡片（插槽 `shell.overlay`），设置里关掉「再次确认」就不弹；
  *   3. 设置 → 通用里一行开关（插槽 `settings.general.item`）。
  *
- * 删除请求发给宿主 `/dsh-delete-session/api/delete`；宿主删完会广播
+ * 删除请求发给宿主 `/dsh-session-delete/api/delete`；宿主删完会广播
  * `api-session/removed`，官方会话控制器收到后自动刷新侧栏，行立即消失。
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-delete-session',
+  id: 'dsh-session-delete',
   factory(require) {
     const React = require('react')
     const h = React.createElement
     const { useCallback, useEffect, useRef, useState, useSyncExternalStore } = React
 
     /** 本插件自己的 locale 命名空间。 */
-    const NS = 'dsh-delete-session'
+    const NS = 'dsh-session-delete'
     /** 侧栏会话菜单插槽。 */
     const MENU_SLOT = 'sidebar.workspaces.session.menu.item'
     /** 设置页「通用」分组的行插槽。 */
@@ -147,7 +147,7 @@ window.__ModuleLoader__.load({
 
     async function refreshSettings() {
       try {
-        const response = await fetch('/dsh-delete-session/api/settings', {
+        const response = await fetch('/dsh-session-delete/api/settings', {
           headers: { accept: 'application/json' },
           cache: 'no-store',
         })
@@ -169,7 +169,7 @@ window.__ModuleLoader__.load({
       settingsState = { confirmBeforeDelete: confirmBeforeDelete === true, ready: true }
       emitSettings()
       try {
-        await fetch('/dsh-delete-session/api/settings', {
+        await fetch('/dsh-session-delete/api/settings', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ confirmBeforeDelete: confirmBeforeDelete === true }),
@@ -214,7 +214,7 @@ window.__ModuleLoader__.load({
     }
 
     async function callDelete(sessionId) {
-      const response = await fetch('/dsh-delete-session/api/delete', {
+      const response = await fetch('/dsh-session-delete/api/delete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sessionId }),
@@ -265,7 +265,7 @@ window.__ModuleLoader__.load({
         }
         // 关掉「再次确认」时是直接删；失败就把确认卡片翻出来当错误提示，别让用户以为删成功了
         void callDelete(sessionId).catch((error) => {
-          console.warn('[dsh-delete-session] delete failed:', error)
+          console.warn('[dsh-session-delete] delete failed:', error)
           publishPending({
             sessionId,
             title: typeof displayTitle === 'string' ? displayTitle : '',
@@ -497,7 +497,7 @@ window.__ModuleLoader__.load({
       // 失败也不影响功能。
       try {
         const stage = slots !== undefined && typeof slots.register === 'function' ? 'slots-ok' : 'slots-missing'
-        fetch(`/dsh-delete-session/api/state?ping=1&stage=${stage}`, {
+        fetch(`/dsh-session-delete/api/state?ping=1&stage=${stage}`, {
           method: 'GET',
           credentials: 'same-origin',
         }).catch(() => {})
@@ -541,7 +541,7 @@ window.__ModuleLoader__.load({
       }
 
       const styleEl = document.createElement('style')
-      styleEl.setAttribute('data-dsh-delete-session', '')
+      styleEl.setAttribute('data-dsh-session-delete', '')
       styleEl.textContent = style
       document.head.appendChild(styleEl)
 
@@ -549,7 +549,7 @@ window.__ModuleLoader__.load({
 
       const startUi = (slots) => {
         try {
-          fetch('/dsh-delete-session/api/state?ping=1&stage=ui-ready', { method: 'GET', credentials: 'same-origin' }).catch(() => {})
+          fetch('/dsh-session-delete/api/state?ping=1&stage=ui-ready', { method: 'GET', credentials: 'same-origin' }).catch(() => {})
         } catch {
           /* fetch 不可用就跳过 */
         }
@@ -589,12 +589,12 @@ window.__ModuleLoader__.load({
               reportedDuplicates = hiddenDuplicates
               // 去重真的发生了才回报，界面不用截图就能证明「菜单里只剩一条」
               fetch(
-                `/dsh-delete-session/api/state?ping=1&stage=dedupe|hidden=${hiddenDuplicates}|label=${encodeURIComponent(wanted)}`,
+                `/dsh-session-delete/api/state?ping=1&stage=dedupe|hidden=${hiddenDuplicates}|label=${encodeURIComponent(wanted)}`,
                 { method: 'GET', credentials: 'same-origin' },
               ).catch(() => {})
             }
           } catch (error) {
-            console.warn('[dsh-delete-session] duplicate menu cleanup failed:', error)
+            console.warn('[dsh-session-delete] duplicate menu cleanup failed:', error)
           }
         }
         let hiddenDuplicates = 0
@@ -623,7 +623,7 @@ window.__ModuleLoader__.load({
             })
             queueDedupe()
           } catch (error) {
-            console.warn('[dsh-delete-session] menu observer failed:', error)
+            console.warn('[dsh-session-delete] menu observer failed:', error)
           }
         }
         let menuOff
@@ -686,7 +686,7 @@ window.__ModuleLoader__.load({
               disposers.push(() => settingsOff?.())
             }
           } catch (error) {
-            console.warn('[dsh-delete-session] slot registration failed:', error)
+            console.warn('[dsh-session-delete] slot registration failed:', error)
           }
         }
 
@@ -706,7 +706,7 @@ window.__ModuleLoader__.load({
             `lang=${String(document.documentElement.lang || '')}`,
           ].join(',')
           fetch(
-            `/dsh-delete-session/api/state?ping=1&stage=${encodeURIComponent(`ui-registered ${flags}`)}`,
+            `/dsh-session-delete/api/state?ping=1&stage=${encodeURIComponent(`ui-registered ${flags}`)}`,
             { method: 'GET', credentials: 'same-origin' },
           ).catch(() => {})
         } catch {
@@ -792,7 +792,7 @@ window.__ModuleLoader__.load({
           startUi(late)
         } else if (attempts >= 50) {
           clearInterval(timer)
-          console.warn('[dsh-delete-session] slots service is unavailable; UI not registered')
+          console.warn('[dsh-session-delete] slots service is unavailable; UI not registered')
         }
       }, 100)
     }

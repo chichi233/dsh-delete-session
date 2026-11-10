@@ -1,4 +1,4 @@
-# dsh-delete-session
+# dsh-session-delete
 
 Adds real session deletion to the [DeepSeek Harness](https://github.com/deepseek-ai) sidebar: a **Delete session** entry in every session row menu that removes the conversation from disk, with the row disappearing immediately.
 
@@ -19,32 +19,32 @@ The framework only ships *archive*. Archiving keeps the files. This plugin cover
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add github:chichi233/dsh-delete-session
+pnpm add github:chichi233/dsh-session-delete
 ```
 
-Then add `"dsh-delete-session"` to `dsh.profile.bundles` in `~/.dsh/profiles/desktop/package.json`.
+Then add `"dsh-session-delete"` to `dsh.profile.bundles` in `~/.dsh/profiles/desktop/package.json`.
 
 ### B. From a local checkout
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add link:/absolute/path/to/dsh-delete-session
+pnpm add link:/absolute/path/to/dsh-session-delete
 ```
 
-Add `"dsh-delete-session"` to `dsh.profile.bundles` as well.
+Add `"dsh-session-delete"` to `dsh.profile.bundles` as well.
 
 ### C. Manual copy
 
-1. Copy the folder to `~/.dsh/profiles/desktop/node_modules/dsh-delete-session/`.
-2. Add `"dsh-delete-session": "file:../../plugins/dsh-delete-session"` to `dependencies`.
-3. Add `"dsh-delete-session"` to `dsh.profile.bundles`.
+1. Copy the folder to `~/.dsh/profiles/desktop/node_modules/dsh-session-delete/`.
+2. Add `"dsh-session-delete": "file:../../plugins/dsh-session-delete"` to `dependencies`.
+3. Add `"dsh-session-delete"` to `dsh.profile.bundles`.
 
 The host half must be restarted: it is an ESM module and the process keeps it in the module cache, so neither editing files nor toggling the plugin console reloads it — restart the DSH desktop app. Afterwards the plugin shows up under Settings → Plugins.
 
 > **Do not hand-write an `insert` row for this plugin in the profile's `cordis.patch.yml`.** The package ships its own `cordis.patch.yml` and is applied through `dsh.profile.bundles` — that is the only supported way in.
-> A hand-written insert gets killed by the plugin console's patch self-heal (`@noob-stupid/dsh-plugin-console`): it resolves package names only against the framework install tree, so a third-party (especially `link:`) package never resolves and it appends `- id: dsh-delete-session` / `disabled: true`. It never re-checks a row it has already disabled, so the plugin stays dead — visible in the list, responsive nowhere. Fix: delete that trailing `- id: dsh-delete-session / disabled: true` block and restart.
+> A hand-written insert gets killed by the plugin console's patch self-heal (`@noob-stupid/dsh-plugin-console`): it resolves package names only against the framework install tree, so a third-party (especially `link:`) package never resolves and it appends `- id: dsh-session-delete` / `disabled: true`. It never re-checks a row it has already disabled, so the plugin stays dead — visible in the list, responsive nowhere. Fix: delete that trailing `- id: dsh-session-delete / disabled: true` block and restart.
 
-Uninstall: drop the entry from `dsh.profile.bundles` and `dependencies`, restart, and delete `~/.dsh/plugin-data/dsh-delete-session/` if you want the setting gone too.
+Uninstall: drop the entry from `dsh.profile.bundles` and `dependencies`, restart, and delete `~/.dsh/plugin-data/dsh-session-delete/` if you want the setting gone too.
 
 ## What it deletes
 
@@ -64,7 +64,7 @@ The official API has no delete: `sessionPersistence` only exposes list/locate/re
 
 ## Settings file
 
-`~/.dsh/plugin-data/dsh-delete-session/settings.json`
+`~/.dsh/plugin-data/dsh-session-delete/settings.json`
 
 ```json
 { "confirmBeforeDelete": true }
@@ -74,10 +74,10 @@ The official API has no delete: `sessionPersistence` only exposes list/locate/re
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/dsh-delete-session/api/settings` | read settings |
-| POST | `/dsh-delete-session/api/settings` | write settings, body `{ "confirmBeforeDelete": false }` |
-| GET | `/dsh-delete-session/api/state` | diagnostics: sessions root and directory count; `?id=<sessionId>` adds whether that session exists |
-| POST | `/dsh-delete-session/api/delete` | delete a session, body `{ "sessionId": "..." }` |
+| GET | `/dsh-session-delete/api/settings` | read settings |
+| POST | `/dsh-session-delete/api/settings` | write settings, body `{ "confirmBeforeDelete": false }` |
+| GET | `/dsh-session-delete/api/state` | diagnostics: sessions root and directory count; `?id=<sessionId>` adds whether that session exists |
+| POST | `/dsh-session-delete/api/delete` | delete a session, body `{ "sessionId": "..." }` |
 
 ## Compatibility
 
