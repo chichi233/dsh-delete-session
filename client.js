@@ -690,28 +690,57 @@ window.__ModuleLoader__.load({
           }
         }
 
-        ensure()
-
         // 注册结果自报：宿主 /api/state 的 client.flags 能直接看出三个插槽是否都挂上了，
         // 不用截图判断（menu=1 说明「删除会话」已在会话菜单里）。
-        try {
-          const flags = [
-            `menu=${menuOff !== undefined ? 1 : 0}`,
-            `overlay=${overlayOff !== undefined ? 1 : 0}`,
-            `settings=${settingsOff !== undefined ? 1 : 0}`,
-            `menuDeclared=${sidebarDeclaresMenu() ? 1 : 0}`,
-            `locale=${typeof offLocale === 'function' ? 1 : 0}`,
-            `localeErr=${localeError === '' ? '-' : localeError.slice(0, 80)}`,
-            `label=${t('menu.deleteSession')}`,
-            `lang=${String(document.documentElement.lang || '')}`,
-          ].join(',')
-          fetch(
-            `/dsh-session-delete/api/state?ping=1&stage=${encodeURIComponent(`ui-registered ${flags}`)}`,
-            { method: 'GET', credentials: 'same-origin' },
-          ).catch(() => {})
-        } catch {
-          /* 打点失败不影响功能 */
+        const report = (tag) => {
+          try {
+            const flags = [
+              `menu=${menuOff !== undefined ? 1 : 0}`,
+              `overlay=${overlayOff !== undefined ? 1 : 0}`,
+              `settings=${settingsOff !== undefined ? 1 : 0}`,
+              `menuDeclared=${sidebarDeclaresMenu() ? 1 : 0}`,
+              `locale=${typeof offLocale === 'function' ? 1 : 0}`,
+              `localeErr=${localeError === '' ? '-' : localeError.slice(0, 80)}`,
+              `label=${t('menu.deleteSession')}`,
+              `lang=${String(document.documentElement.lang || '')}`,
+            ].join(',')
+            fetch(
+              `/dsh-session-delete/api/state?ping=1&stage=${encodeURIComponent(`${tag} ${flags}`)}`,
+              { method: 'GET', credentials: 'same-origin' },
+            ).catch(() => {})
+          } catch {
+            /* 打点失败不影响功能 */
+          }
         }
+
+        const allRegistered = () =>
+          menuOff !== undefined && overlayOff !== undefined && settingsOff !== undefined
+
+        ensure()
+        report('ui-registered')
+
+        // 侧栏可能比我们晚声明菜单插槽。`slots/changed` 是一次性事件，我们注册监听时那一次常常已经过去了，
+        // 于是菜单永远挂不上（0.2.0 重启后就是这样：menu=0 / menuDeclared=0）。
+        // 所以先用短轮询把三处补齐，补齐即停表。
+        let pollTimer
+        let pollAttempts = 0
+        const stopPoll = () => {
+          if (pollTimer !== undefined) {
+            clearInterval(pollTimer)
+            pollTimer = undefined
+          }
+        }
+        if (!allRegistered() && typeof setInterval === 'function') {
+          pollTimer = setInterval(() => {
+            pollAttempts += 1
+            ensure()
+            if (allRegistered() || pollAttempts >= 60) {
+              stopPoll()
+              report('ui-late')
+            }
+          }, 100)
+        }
+        disposers.push(stopPoll)
 
         let offSlotsChanged
         try {
@@ -719,6 +748,10 @@ window.__ModuleLoader__.load({
             offSlotsChanged = ctx.on('slots/changed', () => {
               try {
                 ensure()
+                if (allRegistered()) {
+                  stopPoll()
+                  report('ui-changed')
+                }
               } catch {
                 /* 下一轮重试用 */
               }
