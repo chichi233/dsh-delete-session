@@ -1,0 +1,14 @@
+{
+  "menu.deleteSession": "Delete session",
+  "confirm.title": "Delete session?",
+  "confirm.desc": "Session “{name}” will be permanently deleted: its transcript, child agent sessions, projection cache and spill files are removed together. This cannot be undone.",
+  "confirm.cancel": "Cancel",
+  "confirm.confirm": "Delete session",
+  "confirm.pending": "Deleting…",
+  "confirm.failed": "Could not delete the session: {detail}",
+  "confirm.unknown": "This session no longer exists. Refresh the list.",
+  "settings.title": "Delete session",
+  "settings.confirm.title": "Ask before deleting",
+  "settings.confirm.desc": "When off, “Delete session” in the session menu deletes right away with no dialog.",
+  "settings.hint": "This switch is local to this machine; deleting still removes the session’s child agents."
+}

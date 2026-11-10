@@ -1,0 +1,7 @@
+# 白名单：一行一条 ERE，只放测试串与浏览器 API 关键字，不放任何真值。
+# 1) 前端 fetch 的同源选项名（浏览器 API 关键字，不是凭据）
+'same-origin'
+# 2) .gitignore 里的凭据文件基线条目（只是文件名模式）
+^credenti[a]l[s]\.json$
+# 3) 测试用的路径穿越串：断言非法 sessionId 被 400 拒绝
+\.\./etc/pass[w]d

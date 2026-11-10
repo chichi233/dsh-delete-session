@@ -1,0 +1,59 @@
+{
+  "name": "dsh-delete-session",
+  "version": "0.1.5",
+  "description": "Right-click-to-delete for DeepSeek Harness sessions: a 删除会话 menu item in every session row menu, an optional confirmation dialog, and a Settings switch to skip that dialog. Removes the transcript directory, projection cache rows, spill files and child subagent sessions, then notifies every client so the row disappears immediately.",
+  "type": "module",
+  "license": "MIT",
+  "author": "YG",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chichi233/dsh-delete-session.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chichi233/dsh-delete-session/issues"
+  },
+  "homepage": "https://github.com/chichi233/dsh-delete-session#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "session",
+    "delete",
+    "sidebar"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "node scripts/test-routes.mjs && node scripts/test-host.mjs && node scripts/test-client.cjs"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

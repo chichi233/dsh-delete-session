@@ -1,0 +1,14 @@
+{
+  "menu.deleteSession": "删除会话",
+  "confirm.title": "删除会话？",
+  "confirm.desc": "会话“{name}”会被永久删除：对话记录、子代理会话、投影缓存和临时文件一起清掉，删完无法恢复。",
+  "confirm.cancel": "取消",
+  "confirm.confirm": "删除会话",
+  "confirm.pending": "正在删除…",
+  "confirm.failed": "删除失败：{detail}",
+  "confirm.unknown": "这个会话已经不存在了，刷新一下列表即可。",
+  "settings.title": "删除会话",
+  "settings.confirm.title": "删除前再次确认",
+  "settings.confirm.desc": "关闭后，在会话菜单里点「删除会话」会立刻删掉，不再弹确认框。",
+  "settings.hint": "只影响本机这一份配置；删除仍会连带清理该会话的子代理会话。"
+}

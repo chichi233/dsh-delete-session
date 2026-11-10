@@ -1,0 +1,16 @@
+node_modules/
+*.tgz
+*.bak
+.DS_Store
+
+# 凭据与密钥（基线，避免误提交）
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.npmrc
+credentials.json
