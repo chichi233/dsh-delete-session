@@ -65,24 +65,37 @@ pnpm add link:/absolute/path/to/dsh-session-delete
 2. 选「删除会话」。
 3. 默认弹确认框，点「删除会话」才真正删；不想每次确认就去设置里关掉开关。
 
+删掉之后**能还原**：会话目录进的是 Windows 回收站，在资源管理器里右键「还原」就回到原位置，重启 DSH 后侧栏又会出现它。设置页里也有「打开回收站」按钮。
+
 ## 它到底删了什么
 
 | 目标 | 说明 |
 | --- | --- |
-| 会话转录目录 | `~/.dsh/sessions/--<cwd>--/<sessionId>/`，含 `session.v4.jsonl.zstd`；同一 id 在多个 cwd 目录下都有时全部删掉 |
-| 子代理会话 | `parentSession` 指向被删会话的所有会话，逐层递归（最多 8 层） |
-| 投影缓存行 | `sessionProjectionCache` 表里的一行（服务存在时才清） |
-| spill 临时文件 | `<spillStore.root>/<sessionId>/`（服务存在时才清） |
+| 会话转录目录 | `~/.dsh/sessions/--<cwd>--/<sessionId>/`，含 `session.v4.jsonl.zstd`；同一 id 在多个 cwd 目录下都有时全部处理。这个目录**移进 Windows 回收站**（可还原），不是永久删除 |
+| 子代理会话 | `parentSession` 指向被删会话的所有会话，逐层递归（最多 8 层），一起进回收站 |
+| 投影缓存行 | `sessionProjectionCache` 表里的一行（服务存在时才清；缓存，删了会重建） |
+| spill 临时文件 | `<spillStore.root>/<sessionId>/`（服务存在时才清；临时文件） |
 | 运行时句柄 | 会话若还活着，先 `flush` 再 `detachEntered` |
 
-删完对每个 id `emit('api-session/removed', id)`。官方客户端本来就监听这个事件，所以侧栏自己就刷新了。
+系统回收站用不了时（非 Windows、组策略禁用了回收站、目录在别的卷上），**不会退回永久删除**：整目录挪进插件兜底回收站 `~/.dsh/plugin-data/dsh-session-delete/trash/`，并写一份 `meta.json` 记住原路径。设置页里能「还原」「彻底删除」「清空」。
+
+处理完对每个 id `emit('api-session/removed', id)`。官方客户端本来就监听这个事件，所以侧栏自己就刷新了。
 
 ## 工作原理
 
-官方没有暴露删除会话的 API，`sessionPersistence` 只有 list/locate/read 这套读接口。所以删除走文件系统：会话目录命名规则是公开稳定的 `<root>/<projectKey(cwd)>/<encodeSegment(id)>`，按 id 扫同名目录就能定位，不必反查 cwd。这样做的两个好处：
+官方没有暴露删除会话的 API，`sessionPersistence` 只有 list/locate/read 这套读接口。所以整个流程走文件系统：会话目录命名规则是公开稳定的 `<root>/<projectKey(cwd)>/<encodeSegment(id)>`，按 id 扫同名目录就能定位，不必反查 cwd。这样做的两个好处：
 
 - 服务拿不到时删除照样成功（官方服务只用来顺手清缓存、停活会话、发事件）；
 - 逻辑能在命令行直接测，不需要 DSH 在跑。
+
+「进回收站」用的是一条 PowerShell 命令，等价于资源管理器里的删除：
+
+```powershell
+Add-Type -AssemblyName Microsoft.VisualBasic
+[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($env:DSHDS_PATH, 'OnlyErrorDialogs', 'SendToRecycleBin')
+```
+
+命令返回后还会复核「目录真的不在了」才算成功，避免出现「以为删了其实还在」或「被永久删了」。
 
 ## 设置存放位置
 
@@ -101,7 +114,10 @@ pnpm add link:/absolute/path/to/dsh-session-delete
 | GET | `/dsh-session-delete/api/settings` | 读设置 |
 | POST | `/dsh-session-delete/api/settings` | 写设置，body `{ "confirmBeforeDelete": false }` |
 | GET | `/dsh-session-delete/api/state` | 体检：返回会话根目录与目录总数；带 `?id=<sessionId>` 时返回该会话是否存在 |
-| POST | `/dsh-session-delete/api/delete` | 删除会话，body `{ "sessionId": "..." }` |
+| POST | `/dsh-session-delete/api/delete` | 删除会话，body `{ "sessionId": "..." }`；响应带 `recycled`（进了系统回收站）与 `trashed`（退到插件回收站） |
+| GET | `/dsh-session-delete/api/trash` | 列出插件兜底回收站里的条目 |
+| POST | `/dsh-session-delete/api/trash` | body `{ "action": "restore" \| "purge" \| "purge-all", "name": "..." }` |
+| POST | `/dsh-session-delete/api/recycle-bin` | 打开资源管理器的回收站 |
 
 ## 兼容性
 

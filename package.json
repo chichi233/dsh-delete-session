@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-delete",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Right-click-to-delete for DeepSeek Harness sessions: a 删除会话 menu item in every session row menu, an optional confirmation dialog, and a Settings switch to skip that dialog. Removes the transcript directory, projection cache rows, spill files and child subagent sessions, then notifies every client so the row disappears immediately.",
   "type": "module",
   "license": "MIT",

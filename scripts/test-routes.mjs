@@ -19,6 +19,8 @@ const root = await mkdtemp(join(tmpdir(), 'dshds-routes-'))
 const home = await mkdtemp(join(tmpdir(), 'dshds-routes-home-'))
 process.env.DSH_SESSIONS_ROOT = root
 process.env.DSH_HOME = home
+// 测试夹具不进用户的系统回收站，一律走插件回收站。
+process.env.DSHDS_NO_RECYCLE_BIN = '1'
 
 const project = '--C-Users-tester-tmp-ws--'
 const dir = join(root, project, 'session-deadbeef')
@@ -41,10 +43,12 @@ const fakeCtx = {
 
 const { apply } = await import('../index.js')
 apply(fakeCtx)
-check('注册了三条路由', [...routes.keys()].sort(), [
+check('注册了五条路由', [...routes.keys()].sort(), [
   '/dsh-session-delete/api/delete',
+  '/dsh-session-delete/api/recycle-bin',
   '/dsh-session-delete/api/settings',
   '/dsh-session-delete/api/state',
+  '/dsh-session-delete/api/trash',
 ])
 
 function request(method, url, body) {
@@ -101,10 +105,28 @@ check('GET delete 返回 405', wrongMethod.status, 405)
 const removed = await call('/dsh-session-delete/api/delete', 'POST', '/dsh-session-delete/api/delete', { sessionId: 'session-deadbeef' })
 check('删除 200', removed.status, 200)
 check('删除报告 deleted', removed.json.deleted, ['session-deadbeef'])
-check('目录已消失', await readdir(join(root, project)).catch(() => []), [])
+check('测试里走插件回收站', removed.json.trashed, ['session-deadbeef'])
+check('目录已挪走', await readdir(join(root, project)).catch(() => []), [])
 
-const after = await call('/dsh-session-delete/api/state', 'GET', '/dsh-session-delete/api/state?id=session-deadbeef')
-check('删除后探针为 false', after.json.probe.exists, false)
+const afterDelete = await call('/dsh-session-delete/api/state', 'GET', '/dsh-session-delete/api/state?id=session-deadbeef')
+check('删到回收站后探针为 false', afterDelete.json.probe.exists, false)
+
+const trashList = await call('/dsh-session-delete/api/trash', 'GET', '/dsh-session-delete/api/trash')
+check('回收站列出 1 条', trashList.json.items.length, 1)
+check('回收站记下了 id', trashList.json.items[0].id, 'session-deadbeef')
+check('回收站记下了原位置', trashList.json.items[0].originalPath, dir)
+
+const restored = await call('/dsh-session-delete/api/trash', 'POST', '/dsh-session-delete/api/trash', {
+  action: 'restore',
+  name: trashList.json.items[0].name,
+})
+check('还原 200', restored.status, 200)
+check('还原报告 id', restored.json.id, 'session-deadbeef')
+check('目录回到原位置', await readdir(join(root, project)).catch(() => []), ['session-deadbeef'])
+
+const trashAgain = await call('/dsh-session-delete/api/trash', 'GET', '/dsh-session-delete/api/trash')
+check('还原后回收站为空', trashAgain.json.items.length, 0)
+
 
 await rm(root, { recursive: true, force: true })
 await rm(home, { recursive: true, force: true })

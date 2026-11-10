@@ -52,9 +52,10 @@ const ctxNow = {
   effect: () => { effectRegistered = true },
 }
 mod.apply(ctxNow)
-if (registered.length !== 3) throw new Error('expected 3 slot registrations, got ' + JSON.stringify(registered))
+const expected = ['sidebar.workspaces.session.menu.item', 'shell.overlay', 'shell.overlay', 'settings.general.item']
+if (JSON.stringify(registered) !== JSON.stringify(expected)) throw new Error('expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(registered))
 if (!effectRegistered) throw new Error('effect not registered for cleanup')
-console.log('PASS  立刻可用时注册 3 个插槽', registered.join(' / '))
+console.log('PASS  立刻可用时注册 4 个插槽', registered.join(' / '))
 
 // 2) slots 晚到（ctx.inject 回调） -> 延迟注册
 const lateRegistered = []
@@ -77,7 +78,7 @@ const ctxLate = {
 const realSetTimeout = setTimeout
 mod.apply(ctxLate)
 realSetTimeout(() => {
-  if (lateRegistered.length !== 3) throw new Error('late path registered ' + lateRegistered.length)
-  console.log('PASS  插槽晚到时延迟注册 3 个插槽', lateRegistered.join(' / '))
+  if (lateRegistered.length !== 4) throw new Error('late path registered ' + lateRegistered.length)
+  console.log('PASS  插槽晚到时延迟注册 4 个插槽', lateRegistered.join(' / '))
   console.log('ALL CLIENT CHECKS PASSED')
 }, 20)

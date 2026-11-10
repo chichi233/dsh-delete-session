@@ -50,17 +50,32 @@ Uninstall: drop the entry from `dsh.profile.bundles` and `dependencies`, restart
 
 | Target | Detail |
 | --- | --- |
-| Transcript directory | `~/.dsh/sessions/--<cwd>--/<sessionId>/` including `session.v4.jsonl.zstd`; every matching cwd directory is removed |
-| Child sessions | every session whose `parentSession` points at the deleted one, recursively (max 8 levels) |
-| Projection cache | the matching row in `sessionProjectionCache` (when the service exists) |
-| Spill files | `<spillStore.root>/<sessionId>/` (when the service exists) |
+| Transcript directory | `~/.dsh/sessions/--<cwd>--/<sessionId>/` including `session.v4.jsonl.zstd`; every matching cwd directory is moved to the **Windows Recycle Bin** (restorable), not destroyed |
+| Child sessions | every session whose `parentSession` points at the deleted one, recursively (max 8 levels) — they go to the Recycle Bin too |
+| Projection cache | the matching row in `sessionProjectionCache` (when the service exists; a cache, rebuilt on demand) |
+| Spill files | `<spillStore.root>/<sessionId>/` (when the service exists; temporary files) |
 | Runtime handle | a live session is `flush`ed and `detachEntered`ed first |
+
+Deleted sessions are recoverable: right-click the entry in the Recycle Bin and choose *Restore* — the directory returns to its original path and the session reappears after a DSH restart. Settings also has an *Open Recycle Bin* button.
+
+When the Recycle Bin is unavailable (non-Windows, disabled by policy, directory on another volume) the plugin never falls back to a permanent delete: the whole directory is moved to its own fallback trash at `~/.dsh/plugin-data/dsh-session-delete/trash/` with a `meta.json` recording the original path, and Settings offers restore / delete-permanently / empty.
 
 Afterwards `emit('api-session/removed', id)` is sent for every removed id — the shipped client already listens to it.
 
 ## How it works
 
-The official API has no delete: `sessionPersistence` only exposes list/locate/read. Deletion therefore goes through the filesystem. Session directories follow a public, stable layout `<root>/<projectKey(cwd)>/<encodeSegment(id)>`, so scanning for a directory named after the id is enough — no cwd lookup needed. That buys two things: deletion still works when the services are unavailable (they are only used to stop a live session, clear caches and emit the event), and the logic is testable from the command line without DSH running.
+The official API has no delete: `sessionPersistence` only exposes list/locate/read. Everything therefore goes through the filesystem. Session directories follow a public, stable layout `<root>/<projectKey(cwd)>/<encodeSegment(id)>`, so scanning for a directory named after the id is enough — no cwd lookup needed. That buys two things: deletion still works when the services are unavailable (they are only used to stop a live session, clear caches and emit the event), and the logic is testable from the command line without DSH running.
+
+"Recycle Bin" is one PowerShell call, the same thing Explorer does:
+
+```powershell
+Add-Type -AssemblyName Microsoft.VisualBasic
+[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($env:DSHDS_PATH, 'OnlyErrorDialogs', 'SendToRecycleBin')
+```
+
+Success is only accepted after re-checking that the directory is really gone — so neither "looks deleted but isn't" nor "silently destroyed" can happen.
+
+Set `DSHDS_NO_RECYCLE_BIN=1` to force the fallback trash (used by tests and CI so fixtures never land in your Recycle Bin).
 
 ## Settings file
 
@@ -77,7 +92,10 @@ The official API has no delete: `sessionPersistence` only exposes list/locate/re
 | GET | `/dsh-session-delete/api/settings` | read settings |
 | POST | `/dsh-session-delete/api/settings` | write settings, body `{ "confirmBeforeDelete": false }` |
 | GET | `/dsh-session-delete/api/state` | diagnostics: sessions root and directory count; `?id=<sessionId>` adds whether that session exists |
-| POST | `/dsh-session-delete/api/delete` | delete a session, body `{ "sessionId": "..." }` |
+| POST | `/dsh-session-delete/api/delete` | delete a session, body `{ "sessionId": "..." }`; the response carries `recycled` (went to the system Recycle Bin) and `trashed` (fell back to the plugin trash) |
+| GET | `/dsh-session-delete/api/trash` | list the plugin fallback trash |
+| POST | `/dsh-session-delete/api/trash` | body `{ "action": "restore" \| "purge" \| "purge-all", "name": "..." }` |
+| POST | `/dsh-session-delete/api/recycle-bin` | open Explorer's Recycle Bin |
 
 ## Compatibility
 

@@ -29,32 +29,55 @@ window.__ModuleLoader__.load({
       'menu.deleteSession': '删除会话',
       'confirm.title': '删除会话？',
       'confirm.desc':
-        '会话“{name}”会被永久删除：对话记录、子代理会话、投影缓存和临时文件一起清掉，删完无法恢复。',
+        '会话“{name}”会被移到 Windows 回收站，可以从回收站还原：对话记录、子代理会话一起进去。',
       'confirm.cancel': '取消',
       'confirm.confirm': '删除会话',
-      'confirm.pending': '正在删除…',
+      'confirm.pending': '正在移到回收站…',
       'confirm.failed': '删除失败：{detail}',
       'confirm.unknown': '这个会话已经不存在了，刷新一下列表即可。',
+      'toast.recycled': '已移到 Windows 回收站，需要的话去回收站右键「还原」。',
+      'toast.trashed': '系统回收站不可用，已移到插件回收站：设置 → 删除会话 里可以还原。',
       'settings.title': '删除会话',
       'settings.confirm.title': '删除前再次确认',
-      'settings.confirm.desc': '关闭后，在会话菜单里点「删除会话」会立刻删掉，不再弹确认框。',
+      'settings.confirm.desc':
+        '关闭后，在会话菜单里点「删除会话」会立刻移进回收站，不再弹确认框。',
       'settings.hint': '只影响本机这一份配置；删除仍会连带清理该会话的子代理会话。',
+      'settings.bin.title': '回收站',
+      'settings.bin.desc': '删除的会话会进 Windows 回收站，在资源管理器里右键「还原」就能放回原处。',
+      'settings.bin.open': '打开回收站',
+      'settings.trash.title': '插件回收站（系统回收站不可用时的兜底）',
+      'settings.trash.empty': '空着，说明每次删除都顺利进了系统回收站。',
+      'settings.trash.restore': '还原',
+      'settings.trash.purge': '彻底删除',
+      'settings.trash.purgeAll': '清空',
+      'settings.trash.restored': '已还原，刷新列表就能看到它。',
     }
 
     const en = {
       'menu.deleteSession': 'Delete session',
       'confirm.title': 'Delete session?',
       'confirm.desc':
-        'Session “{name}” will be permanently deleted: its transcript, child agent sessions, projection cache and spill files are removed together. This cannot be undone.',
+        'Session “{name}” will be moved to the Windows Recycle Bin, together with its child agent sessions, so you can restore it from there.',
       'confirm.cancel': 'Cancel',
       'confirm.confirm': 'Delete session',
-      'confirm.pending': 'Deleting…',
+      'confirm.pending': 'Moving to the Recycle Bin…',
       'confirm.failed': 'Could not delete the session: {detail}',
       'confirm.unknown': 'This session no longer exists. Refresh the list.',
+      'toast.recycled': 'Moved to the Windows Recycle Bin. Right-click it there to restore.',
+      'toast.trashed': 'The system Recycle Bin was unavailable, so it went to the plugin trash. Restore it in Settings → Delete session.',
       'settings.title': 'Delete session',
       'settings.confirm.title': 'Ask before deleting',
-      'settings.confirm.desc': 'When off, “Delete session” in the session menu deletes right away with no dialog.',
+      'settings.confirm.desc': 'When off, “Delete session” sends the session to the Recycle Bin right away with no dialog.',
       'settings.hint': 'This switch is local to this machine; deleting still removes the session’s child agents.',
+      'settings.bin.title': 'Recycle Bin',
+      'settings.bin.desc': 'Deleted sessions go to the Windows Recycle Bin. Restore one by right-clicking it in Explorer.',
+      'settings.bin.open': 'Open Recycle Bin',
+      'settings.trash.title': 'Plugin trash (fallback when the system Recycle Bin is unavailable)',
+      'settings.trash.empty': 'Empty — every delete reached the system Recycle Bin.',
+      'settings.trash.restore': 'Restore',
+      'settings.trash.purge': 'Delete permanently',
+      'settings.trash.purgeAll': 'Empty trash',
+      'settings.trash.restored': 'Restored. Refresh the list to see it again.',
     }
     // #endregion
 
@@ -233,6 +256,101 @@ window.__ModuleLoader__.load({
     }
     // #endregion
 
+    // #region 提示条（告诉用户「进了哪个回收站、怎么还原」）
+    let notice = null
+    let noticeTimer = null
+    const noticeListeners = new Set()
+
+    function subscribeNotice(listener) {
+      noticeListeners.add(listener)
+      return () => noticeListeners.delete(listener)
+    }
+
+    function emitNotice() {
+      for (const listener of [...noticeListeners]) {
+        try {
+          listener()
+        } catch {
+          /* 单个订阅者出错不影响其它 */
+        }
+      }
+    }
+
+    function publishNotice(text, tone) {
+      notice = { text, tone: typeof tone === 'string' ? tone : 'info' }
+      emitNotice()
+      if (noticeTimer !== null) clearTimeout(noticeTimer)
+      noticeTimer = setTimeout(() => {
+        notice = null
+        noticeTimer = null
+        emitNotice()
+      }, 6000)
+    }
+
+    function useNotice() {
+      return useSyncExternalStore(
+        subscribeNotice,
+        () => notice,
+        () => null,
+      )
+    }
+
+    /** 删除成功后的说法：进了系统回收站，还是退到了插件回收站。 */
+    function describeDelete(data, t) {
+      const trashed = Array.isArray(data?.trashed) ? data.trashed.length : 0
+      return trashed > 0 ? t('toast.trashed') : t('toast.recycled')
+    }
+
+    function DeleteSessionToast(props) {
+      const t = guardT(props.t)
+      const current = useNotice()
+      if (current === null) return null
+      return h(
+        'div',
+        { className: `dshds-toast${current.tone === 'warn' ? ' dshds-toast-warn' : ''}`, role: 'status' },
+        h('span', { className: 'dshds-toast-text' }, current.text),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dshds-toast-close',
+            'aria-label': t('confirm.cancel'),
+            onClick: () => {
+              notice = null
+              emitNotice()
+            },
+          },
+          '×',
+        ),
+      )
+    }
+    // #endregion
+
+    // #region 回收站接口
+    async function openRecycleBin() {
+      const response = await fetch('/dsh-session-delete/api/recycle-bin', { method: 'POST' })
+      return response.json()
+    }
+
+    async function fetchTrash() {
+      const response = await fetch('/dsh-session-delete/api/trash', { method: 'GET' })
+      const data = await response.json()
+      if (data?.ok !== true) throw new Error(typeof data?.error === 'string' ? data.error : `HTTP ${response.status}`)
+      return data
+    }
+
+    async function trashAction(action, name) {
+      const response = await fetch('/dsh-session-delete/api/trash', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action, name }),
+      })
+      const data = await response.json()
+      if (data?.ok !== true) throw new Error(typeof data?.error === 'string' ? data.error : `HTTP ${response.status}`)
+      return data
+    }
+    // #endregion
+
     // #region 菜单项
     function DeleteSessionMenuItem(props) {
       const { sessionId, displayTitle, useMenuOpenState } = props
@@ -264,15 +382,19 @@ window.__ModuleLoader__.load({
           return
         }
         // 关掉「再次确认」时是直接删；失败就把确认卡片翻出来当错误提示，别让用户以为删成功了
-        void callDelete(sessionId).catch((error) => {
-          console.warn('[dsh-session-delete] delete failed:', error)
-          publishPending({
-            sessionId,
-            title: typeof displayTitle === 'string' ? displayTitle : '',
-            error: String(error?.message ?? error),
+        void callDelete(sessionId)
+          .then((data) => {
+            publishNotice(describeDelete(data, t))
           })
-        })
-      }, [closeMenu, displayTitle, sessionId, settings.confirmBeforeDelete])
+          .catch((error) => {
+            console.warn('[dsh-session-delete] delete failed:', error)
+            publishPending({
+              sessionId,
+              title: typeof displayTitle === 'string' ? displayTitle : '',
+              error: String(error?.message ?? error),
+            })
+          })
+      }, [closeMenu, displayTitle, sessionId, settings.confirmBeforeDelete, t])
 
       let primitives
       try {
@@ -352,16 +474,17 @@ window.__ModuleLoader__.load({
         setBusy(true)
         setError(null)
         callDelete(target.sessionId)
-          .then(() => {
+          .then((data) => {
             setBusy(false)
             publishPending(null)
+            publishNotice(describeDelete(data, t))
           })
           .catch((rawError) => {
             setBusy(false)
             const message = String(rawError?.message ?? rawError)
             setError(message)
           })
-      }, [busy, target])
+      }, [busy, target, t])
 
       if (target === null) return null
 
@@ -418,29 +541,163 @@ window.__ModuleLoader__.load({
     function DeleteSessionSettingsItem(props) {
       const t = guardT(props.t)
       const settings = useSettings()
+      const [trash, setTrash] = useState({ loaded: false, items: [], error: null, root: null })
+      const [busyName, setBusyName] = useState(null)
+
+      const reloadTrash = useCallback(() => {
+        fetchTrash()
+          .then((data) => {
+            setTrash({ loaded: true, items: Array.isArray(data.items) ? data.items : [], error: null, root: data.root ?? null })
+          })
+          .catch((error) => {
+            setTrash({ loaded: true, items: [], error: String(error?.message ?? error), root: null })
+          })
+      }, [])
+
+      useEffect(() => {
+        reloadTrash()
+      }, [reloadTrash])
+
       const onChange = useCallback((event) => {
         void persistSettings(event.target.checked)
       }, [])
+
+      const onOpenBin = useCallback(() => {
+        void openRecycleBin().catch((error) => {
+          console.warn('[dsh-session-delete] open recycle bin failed:', error)
+        })
+      }, [])
+
+      const onTrashAction = useCallback(
+        (action, name) => {
+          setBusyName(name ?? 'all')
+          void trashAction(action, name)
+            .then(() => {
+              if (action === 'restore') publishNotice(t('settings.trash.restored'))
+              reloadTrash()
+            })
+            .catch((error) => {
+              publishNotice(String(error?.message ?? error), 'warn')
+            })
+            .finally(() => {
+              setBusyName(null)
+            })
+        },
+        [reloadTrash, t],
+      )
+
+      const items = trash.items
+
       return h(
         'div',
-        { className: 'dshds-settings-row' },
+        { className: 'dshds-settings' },
         h(
           'div',
-          { className: 'dshds-settings-text' },
-          h('div', { className: 'dshds-settings-title' }, t('settings.confirm.title')),
-          h('div', { className: 'dshds-settings-desc' }, t('settings.confirm.desc')),
-          h('div', { className: 'dshds-settings-hint' }, t('settings.hint')),
+          { className: 'dshds-settings-row' },
+          h(
+            'div',
+            { className: 'dshds-settings-text' },
+            h('div', { className: 'dshds-settings-title' }, t('settings.confirm.title')),
+            h('div', { className: 'dshds-settings-desc' }, t('settings.confirm.desc')),
+            h('div', { className: 'dshds-settings-hint' }, t('settings.hint')),
+          ),
+          h(
+            'label',
+            { className: 'dshds-switch' },
+            h('input', {
+              type: 'checkbox',
+              className: 'dshds-switch-input',
+              checked: settings.confirmBeforeDelete,
+              onChange,
+            }),
+            h('span', { className: 'dshds-switch-track', 'aria-hidden': 'true' }, h('span', { className: 'dshds-switch-thumb' })),
+          ),
         ),
         h(
-          'label',
-          { className: 'dshds-switch' },
-          h('input', {
-            type: 'checkbox',
-            className: 'dshds-switch-input',
-            checked: settings.confirmBeforeDelete,
-            onChange,
-          }),
-          h('span', { className: 'dshds-switch-track', 'aria-hidden': 'true' }, h('span', { className: 'dshds-switch-thumb' })),
+          'div',
+          { className: 'dshds-settings-row' },
+          h(
+            'div',
+            { className: 'dshds-settings-text' },
+            h('div', { className: 'dshds-settings-title' }, t('settings.bin.title')),
+            h('div', { className: 'dshds-settings-desc' }, t('settings.bin.desc')),
+          ),
+          h(
+            'button',
+            { type: 'button', className: 'dshds-btn', onClick: onOpenBin },
+            t('settings.bin.open'),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'dshds-settings-trash' },
+          h(
+            'div',
+            { className: 'dshds-settings-trash-head' },
+            h('div', { className: 'dshds-settings-title' }, t('settings.trash.title')),
+            items.length > 1
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshds-btn dshds-btn-small',
+                    disabled: busyName !== null,
+                    onClick: () => onTrashAction('purge-all'),
+                  },
+                  t('settings.trash.purgeAll'),
+                )
+              : null,
+          ),
+          !trash.loaded
+            ? h('div', { className: 'dshds-settings-hint' }, '…')
+            : trash.error !== null
+              ? h('div', { className: 'dshds-card-error' }, trash.error)
+              : items.length === 0
+                ? h('div', { className: 'dshds-settings-hint' }, t('settings.trash.empty'))
+                : h(
+                    'ul',
+                    { className: 'dshds-trash-list' },
+                    items.map((item) =>
+                      h(
+                        'li',
+                        { key: item.name, className: 'dshds-trash-item' },
+                        h(
+                          'div',
+                          { className: 'dshds-trash-info' },
+                          h('div', { className: 'dshds-trash-name' }, item.title || item.id || item.name),
+                          h(
+                            'div',
+                            { className: 'dshds-settings-hint' },
+                            `${item.recycledAt ?? ''} · ${Math.max(1, Math.round((item.sizeBytes ?? 0) / 1024))} KB`,
+                          ),
+                        ),
+                        h(
+                          'div',
+                          { className: 'dshds-trash-actions' },
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshds-btn dshds-btn-small',
+                              disabled: busyName !== null,
+                              onClick: () => onTrashAction('restore', item.name),
+                            },
+                            t('settings.trash.restore'),
+                          ),
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshds-btn dshds-btn-small dshds-btn-danger',
+                              disabled: busyName !== null,
+                              onClick: () => onTrashAction('purge', item.name),
+                            },
+                            t('settings.trash.purge'),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
         ),
       )
     }
@@ -475,6 +732,20 @@ window.__ModuleLoader__.load({
 .dshds-switch-input:checked + .dshds-switch-track { background: var(--dsw-alias-brand-primary, #4d6bfe); }
 .dshds-switch-input:checked + .dshds-switch-track .dshds-switch-thumb { transform: translateX(16px); }
 .dshds-switch-input:focus-visible + .dshds-switch-track { outline: 2px solid var(--dsw-alias-brand-primary, #4d6bfe); outline-offset: 2px; }
+.dshds-settings { display: flex; flex-direction: column; gap: 8px; }
+.dshds-settings-trash { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.1)); border-radius: 10px; background: var(--dsw-alias-bg-layer-2, rgba(0,0,0,.02)); }
+.dshds-settings-trash-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dshds-trash-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.dshds-trash-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px; border-radius: 8px; background: var(--dsw-alias-bg-layer-1, #fff); border: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.08)); }
+.dshds-trash-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dshds-trash-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshds-trash-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dshds-btn-small { padding: 3px 10px; font-size: 12px; }
+.dshds-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 4100; display: flex; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 32px)); padding: 9px 12px 9px 14px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.1)); background: var(--dsw-alias-bg-layer-1, #fff); color: var(--dsw-alias-label-primary, #1f2329); box-shadow: 0 10px 28px rgba(15, 18, 22, .18); font-size: 12px; line-height: 1.5; }
+.dshds-toast-warn { border-color: var(--dsw-alias-danger, #e5484d); }
+.dshds-toast-text { flex: 1; min-width: 0; }
+.dshds-toast-close { flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-secondary, #5f6672); font-size: 15px; line-height: 1; cursor: pointer; }
+.dshds-toast-close:hover { background: var(--dsw-alias-bg-layer-2, rgba(0,0,0,.06)); }
 `
 
     // 加载器只把 require 传进来（factory(require) → exports），module/exports
@@ -628,6 +899,7 @@ window.__ModuleLoader__.load({
         }
         let menuOff
         let overlayOff
+        let toastOff
         let settingsOff
 
         const sidebarDeclaresMenu = () => {
@@ -671,6 +943,20 @@ window.__ModuleLoader__.load({
               )
               disposers.push(() => overlayOff?.())
             }
+            if (toastOff === undefined) {
+              toastOff = slots.inject('shell.overlay', () =>
+                slots.register(
+                  {
+                    name: 'shell.overlay',
+                    id: `${NS}.toast`,
+                    locale: NS,
+                    inject: () => ({ t }),
+                  },
+                  DeleteSessionToast,
+                ),
+              )
+              disposers.push(() => toastOff?.())
+            }
             if (settingsOff === undefined) {
               settingsOff = slots.inject(SETTINGS_SLOT, () =>
                 slots.register(
@@ -697,6 +983,7 @@ window.__ModuleLoader__.load({
             const flags = [
               `menu=${menuOff !== undefined ? 1 : 0}`,
               `overlay=${overlayOff !== undefined ? 1 : 0}`,
+              `toast=${toastOff !== undefined ? 1 : 0}`,
               `settings=${settingsOff !== undefined ? 1 : 0}`,
               `menuDeclared=${sidebarDeclaresMenu() ? 1 : 0}`,
               `locale=${typeof offLocale === 'function' ? 1 : 0}`,
@@ -714,7 +1001,10 @@ window.__ModuleLoader__.load({
         }
 
         const allRegistered = () =>
-          menuOff !== undefined && overlayOff !== undefined && settingsOff !== undefined
+          menuOff !== undefined &&
+          overlayOff !== undefined &&
+          toastOff !== undefined &&
+          settingsOff !== undefined
 
         ensure()
         report('ui-registered')

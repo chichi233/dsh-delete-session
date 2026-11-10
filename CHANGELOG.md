@@ -1,3 +1,24 @@
+# Changelog
+
+## 0.3.0 — 2026-11-10
+
+改了删除的语义：**删掉不再等于永久消失**。
+
+- 删除 = 把会话目录移进 **Windows 回收站**（`Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory` +
+  `SendToRecycleBin`，PowerShell 静默调用）。之后在资源管理器里右键「还原」，目录回到原来的
+  `~/.dsh/sessions/<项目>/<会话目录>`，重启 DSH 就能看到这条会话。
+- 系统回收站不可用时（非 Windows、组策略禁用、目录在别的卷）**绝不退回永久删除**：整目录挪进
+  插件自己的兜底回收站 `~/.dsh/plugin-data/dsh-session-delete/trash/`，并记下 `meta.json`
+  （原路径、会话 id、标题、时间），设置页里可以「还原」或「彻底删除」。
+- 新增接口：`GET /dsh-session-delete/api/trash`（列出兜底回收站）、`POST /dsh-session-delete/api/trash`
+  （`{action:"restore"|"purge"|"purge-all", name}`）、`POST /dsh-session-delete/api/recycle-bin`
+  （打开资源管理器的回收站）。
+- 删除成功的响应多了 `recycled`（进了系统回收站）与 `trashed`（退到插件回收站）两个数组。
+- 界面：确认框文案改成「会被移到 Windows 回收站，可以从回收站还原」；删除成功后弹出提示条
+  （6 秒自动消失），说明去了哪个回收站、怎么还原；设置页多了「回收站」区块（打开回收站按钮 +
+  兜底回收站列表，带还原 / 彻底删除 / 清空）。
+- 环境变量 `DSHDS_NO_RECYCLE_BIN=1` 强制走兜底回收站，测试和 CI 用它避免把夹具塞进用户回收站。
+
 ## 0.2.1
 
 - 修：重启后侧栏菜单项有时挂不上（日志里 `menu=0` / `menuDeclared=0`）。原因是侧栏声明
@@ -19,8 +40,6 @@
 - **会话菜单里出现两条「删除会话」**。另一条来自 `@michengai/dsh-archive-manager`（它也注册 `sidebar.workspaces.session.menu.item`，`order: 500`，点开永远弹它自己的确认框）。slots 没有「摘掉别人注册条目」的 API，因此改为：自己的菜单项在文字外面套一个 `data-dshds-menu` 标记；菜单一打开，用 `MutationObserver` 把同文案、没有该标记的那一条 `display: none`，只留一个入口。若我们自己的条目没挂上则**不做任何隐藏**，避免把用户唯一可用的删除入口也藏掉。
 - 去重真的发生时向 `GET /dsh-session-delete/api/state` 回报 `stage=dedupe|hidden=<n>|label=…`，不用截图就能确认菜单只剩一条。
 - 顺手把测试期间被改成的 `confirmBeforeDelete: false` 恢复成 `true`（默认仍然「删除前再次确认」）。
-
-# Changelog
 
 ## 0.1.4 — 2026-11-10
 

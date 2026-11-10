@@ -4,7 +4,9 @@
  * 职责：
  *   1. 提供删除接口 POST /dsh-session-delete/api/delete；
  *   2. 提供设置读写 GET/POST /dsh-session-delete/api/settings（「删除前再次确认」开关）；
- *   3. 真正把会话从磁盘上抹掉。
+ *   3. 把会话目录**移到 Windows 回收站**（可还原），系统回收站不可用时退回插件自己的回收站
+ *      （`~/.dsh/plugin-data/dsh-session-delete/trash/`，接口可列表/还原/彻底删除）；
+ *   4. POST /dsh-session-delete/api/recycle-bin 打开资源管理器的回收站。
  *
  * 为什么是纯文件系统实现（不调 sessionPersistence.list/locate）：
  *   · 官方没有暴露「删除会话」的 API，`sessionPersistence` 只有 list/locate/read 这套读接口；
@@ -15,8 +17,9 @@
  *   `sessions` 用来 flush/detach 活会话，`sessionProjectionCache` 清投影行，
  *   `spillStore` 清临时文件，最后 emit `api-session/removed` 让官方客户端把那一行撤掉。
  */
+import { spawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
-import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { createZstdDecompress } from 'node:zlib'
@@ -35,6 +38,14 @@ const SAFE_ID = /^[A-Za-z0-9._:-]{1,200}$/
 const HEADER_READ_LIMIT = 256 * 1024
 /** 扫头部时的并发上限。 */
 const SCAN_CONCURRENCY = 8
+/** 系统回收站只有 Windows 有；其它平台直接走插件回收站。 */
+const IS_WINDOWS = process.platform === 'win32'
+/** PowerShell 调 Shell 接口把目录送进回收站（不进回收站就报错，不会静默永久删）。 */
+const RECYCLE_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  'Add-Type -AssemblyName Microsoft.VisualBasic',
+  "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($env:DSHDS_PATH, 'OnlyErrorDialogs', 'SendToRecycleBin')",
+].join('; ')
 
 let settingsMemo = null
 
@@ -354,24 +365,250 @@ async function cleanAuxiliary(scope, sessionId) {
   }
 }
 
+/** 插件自带的兜底回收站：系统回收站用不了时，数据挪到这里，不丢。 */
+function trashRoot() {
+  return join(dshHome(), 'plugin-data', name, 'trash')
+}
+
+async function pathExists(path) {
+  try {
+    await lstat(path)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+/** 跑一次 PowerShell，返回 exitCode 与输出（不抛；调用方自己判断）。 */
+function runPowerShell(script, env, timeoutMs = 20000) {
+  return new Promise((resolvePromise) => {
+    let child
+    try {
+      child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+        windowsHide: true,
+        env: { ...process.env, ...env },
+      })
+    } catch (error) {
+      resolvePromise({ code: -1, stdout: '', stderr: String(error?.message ?? error) })
+      return
+    }
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => {
+      try {
+        child.kill()
+      } catch {
+        /* 已经退出了 */
+      }
+      resolvePromise({ code: -1, stdout, stderr: `${stderr}\nrecycle bin timed out after ${timeoutMs}ms` })
+    }, timeoutMs)
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      resolvePromise({ code: -1, stdout, stderr: String(error?.message ?? error) })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolvePromise({ code: code ?? -1, stdout, stderr })
+    })
+  })
+}
+
+/**
+ * 把目录移进 Windows 系统回收站。目录本身没了才算成功——
+ * 这样「以为删了、其实还在」或者「被永久删了」都不会发生。
+ */
+async function moveToSystemRecycleBin(dir) {
+  if (!IS_WINDOWS) throw new Error('system recycle bin is only available on Windows')
+  // 测试/CI 用：强制走插件回收站，免得测试夹具真的进用户的系统回收站。
+  if (process.env.DSHDS_NO_RECYCLE_BIN === '1') throw new Error('system recycle bin disabled by DSHDS_NO_RECYCLE_BIN')
+  const result = await runPowerShell(RECYCLE_SCRIPT, { DSHDS_PATH: dir })
+  if (result.code !== 0) {
+    const detail = (result.stderr || result.stdout || '').trim().split('\n').slice(-2).join(' ')
+    throw new Error(detail === '' ? `powershell exited with ${result.code}` : detail)
+  }
+  if (await pathExists(dir)) throw new Error('recycle bin reported success but the directory is still there')
+}
+
+/** 系统回收站不可用时的兜底：整目录挪到插件回收站，并记下原来的位置。 */
+async function moveToPluginTrash(dir, meta) {
+  const root = trashRoot()
+  await mkdir(root, { recursive: true })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const safeId = String(meta.id ?? 'session').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120)
+  const folder = join(root, `${stamp}__${safeId}`)
+  await mkdir(folder, { recursive: true })
+  const payload = join(folder, 'session')
+  try {
+    await rename(dir, payload)
+  } catch (error) {
+    if (error?.code !== 'EXDEV') throw error
+    await cp(dir, payload, { recursive: true })
+    await rm(dir, { recursive: true, force: true })
+  }
+  const record = {
+    id: meta.id ?? null,
+    title: typeof meta.title === 'string' ? meta.title : null,
+    cwd: typeof meta.cwd === 'string' ? meta.cwd : null,
+    originalPath: dir,
+    recycledAt: new Date().toISOString(),
+  }
+  await writeFile(join(folder, 'meta.json'), `${JSON.stringify(record, null, 2)}\n`, 'utf8')
+  return join(folder, 'meta.json')
+}
+
+/** 插件回收站目录名白名单（自己生成的名字，只允许安全字符）。 */
+const SAFE_TRASH_NAME = /^[A-Za-z0-9._-]{1,200}$/
+
+async function dirSize(path) {
+  let total = 0
+  let entries
+  try {
+    entries = await readdir(path, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  for (const entry of entries) {
+    const child = join(path, entry.name)
+    try {
+      if (entry.isDirectory()) total += await dirSize(child)
+      else total += (await stat(child)).size
+    } catch {
+      /* 统计失败就当 0，不影响还原 */
+    }
+  }
+  return total
+}
+
+/** 列出插件回收站里的条目（正常情况下是空的；只有系统回收站失败时才有东西）。 */
+async function listPluginTrash() {
+  const root = trashRoot()
+  let entries = []
+  try {
+    entries = await readdir(root, { withFileTypes: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { root, items: [] }
+    throw error
+  }
+  const items = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const folder = join(root, entry.name)
+    let record = {}
+    try {
+      record = JSON.parse(await readFile(join(folder, 'meta.json'), 'utf8'))
+    } catch {
+      record = {}
+    }
+    items.push({
+      name: entry.name,
+      id: typeof record.id === 'string' ? record.id : null,
+      title: typeof record.title === 'string' ? record.title : null,
+      originalPath: typeof record.originalPath === 'string' ? record.originalPath : null,
+      recycledAt: typeof record.recycledAt === 'string' ? record.recycledAt : null,
+      sizeBytes: await dirSize(join(folder, 'session')),
+    })
+  }
+  items.sort((left, right) => String(right.name).localeCompare(String(left.name)))
+  return { root, items }
+}
+
+/** 从插件回收站还原一条：放回它原来所在的会话目录。 */
+async function restorePluginTrash(entryName) {
+  if (!SAFE_TRASH_NAME.test(entryName)) throw new Error(`回收站条目名不合法：${entryName}`)
+  const folder = join(trashRoot(), entryName)
+  const record = JSON.parse(await readFile(join(folder, 'meta.json'), 'utf8'))
+  const originalPath = record?.originalPath
+  if (typeof originalPath !== 'string' || originalPath === '') throw new Error('这条记录没有原始的会话目录')
+  const payload = join(folder, 'session')
+  if (!(await pathExists(payload))) throw new Error('回收站里找不到会话目录')
+  if (await pathExists(originalPath)) throw new Error(`目标位置已经存在同名目录：${originalPath}`)
+  await mkdir(dirname(originalPath), { recursive: true })
+  try {
+    await rename(payload, originalPath)
+  } catch (error) {
+    if (error?.code !== 'EXDEV') throw error
+    await cp(payload, originalPath, { recursive: true })
+    await rm(payload, { recursive: true, force: true })
+  }
+  await rm(folder, { recursive: true, force: true })
+  const id = typeof record?.id === 'string' ? record.id : null
+  return { restored: true, id, originalPath }
+}
+
+/** 彻底删掉插件回收站里的一条（或全部）。 */
+async function purgePluginTrash(entryName) {
+  const root = trashRoot()
+  if (entryName === undefined || entryName === null || entryName === '') {
+    await rm(root, { recursive: true, force: true })
+    return { purged: 'all' }
+  }
+  if (!SAFE_TRASH_NAME.test(entryName)) throw new Error(`回收站条目名不合法：${entryName}`)
+  await rm(join(root, entryName), { recursive: true, force: true })
+  return { purged: entryName }
+}
+
+/** 打开资源管理器的回收站（用户手动「还原」就在那里）。 */
+function openSystemRecycleBin() {
+  return new Promise((resolvePromise) => {
+    if (!IS_WINDOWS) {
+      resolvePromise({ opened: false, reason: 'not-windows' })
+      return
+    }
+    try {
+      const child = spawn('explorer.exe', ['shell:RecycleBinFolder'], { windowsHide: false, detached: true, stdio: 'ignore' })
+      child.on('error', () => resolvePromise({ opened: false, reason: 'spawn-failed' }))
+      child.unref()
+      resolvePromise({ opened: true })
+    } catch (error) {
+      resolvePromise({ opened: false, reason: String(error?.message ?? error) })
+    }
+  })
+}
+
 async function deleteSessionTree(scope, sessionId) {
   if (!SAFE_ID.test(sessionId)) throw new Error(`会话 id 不合法：${sessionId}`)
   const root = sessionsRoot(scope)
   const targets = await collectTargets(root, sessionId)
-  const deleted = []
+  const results = []
   const failures = []
   const wasLive = await detachLive(scope, sessionId)
   for (const target of targets) {
+    const id = target.header?.id ?? sessionId
     try {
       await assertNotSymlink(dirname(target.dir), `拒绝删除：项目目录是符号链接（${dirname(target.dir)}）`)
       await assertNotSymlink(target.dir, `拒绝删除：会话目录是符号链接（${target.dir}）`)
-      await rm(target.dir, { recursive: true, force: true })
-      deleted.push(target.header?.id ?? sessionId)
-      await cleanAuxiliary(scope, target.header?.id ?? sessionId)
+      let method = 'recycle-bin'
+      let note
+      try {
+        await moveToSystemRecycleBin(target.dir)
+      } catch (recycleError) {
+        // 系统回收站用不了（非 Windows / 组策略禁用 / 目录在别的卷）也绝不能退回永久删除：
+        // 挪进插件回收站，界面上再告诉用户怎么还原。
+        method = 'plugin-trash'
+        await moveToPluginTrash(target.dir, {
+          id,
+          title: target.header?.title,
+          cwd: target.header?.cwd,
+        })
+        note = String(recycleError?.message ?? recycleError)
+      }
+      results.push(note === undefined ? { id, method } : { id, method, note })
+      await cleanAuxiliary(scope, id)
     } catch (error) {
-      failures.push({ sessionId: target.header?.id ?? sessionId, message: String(error?.message ?? error) })
+      failures.push({ sessionId: id, message: String(error?.message ?? error) })
     }
   }
+  const deleted = results.map((row) => row.id)
+  const recycled = results.filter((row) => row.method === 'recycle-bin').map((row) => row.id)
+  const trashed = results.filter((row) => row.method === 'plugin-trash').map((row) => row.id)
+  const notes = results.filter((row) => typeof row.note === 'string').map((row) => row.note)
   for (const id of deleted) {
     try {
       scope.emit('api-session/removed', id)
@@ -380,7 +617,7 @@ async function deleteSessionTree(scope, sessionId) {
     }
   }
   if (deleted.length === 0 && failures.length > 0) throw new Error(failures[0].message)
-  return { deleted, failures, skipped: targets.length === 0, wasLive, root }
+  return { deleted, recycled, trashed, failures, notes, skipped: targets.length === 0, wasLive, root }
 }
 
 /** 只读体检：根目录、会话数、目标是否在盘上——排查用，也方便别人复用。 */
@@ -460,6 +697,47 @@ export function apply(ctx) {
         sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
       }
     })
+
+    // 插件回收站：系统回收站失败时的兜底，可列表 / 还原 / 彻底删除。
+    route('trash', async (req, res) => {
+      try {
+        if (req.method === 'GET') {
+          sendJson(res, 200, { ok: true, platform: process.platform, system: IS_WINDOWS, ...(await listPluginTrash()) })
+          return
+        }
+        if (req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const action = typeof body?.action === 'string' ? body.action : 'restore'
+          const entry = typeof body?.name === 'string' ? body.name.trim() : ''
+          if (action === 'restore') {
+            sendJson(res, 200, { ok: true, ...(await restorePluginTrash(entry)) })
+            return
+          }
+          if (action === 'purge' || action === 'purge-all') {
+            sendJson(res, 200, { ok: true, ...(await purgePluginTrash(action === 'purge-all' ? '' : entry)) })
+            return
+          }
+          sendJson(res, 400, { ok: false, error: `unknown action: ${action}` })
+          return
+        }
+        sendJson(res, 405, { ok: false, error: 'method not allowed' })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
+      }
+    })
+
+    // 打开资源管理器的回收站，用户在里面右键「还原」即可。
+    route('recycle-bin', async (req, res) => {
+      try {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { ok: false, error: 'method not allowed' })
+          return
+        }
+        sendJson(res, 200, { ok: true, ...(await openSystemRecycleBin()) })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
+      }
+    })
   })
 }
 
@@ -476,6 +754,13 @@ export const __test = {
   settingsFile,
   loadSettings,
   saveSettings,
+  trashRoot,
+  listPluginTrash,
+  restorePluginTrash,
+  purgePluginTrash,
+  moveToSystemRecycleBin,
+  moveToPluginTrash,
+  openSystemRecycleBin,
   resetSettingsMemo: () => {
     settingsMemo = null
   },
